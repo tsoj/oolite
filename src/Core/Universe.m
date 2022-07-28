@@ -125,11 +125,11 @@ static NSString * const kOOLogEntityVerificationRebuild		= @"entity.linkedList.v
 
 
 float vertices[] = {
-    // positions          // colors           // texture coords
-     1.0f,  1.0f, 0.0f,   1.0f, 0.0f, 0.0f,   1.0f, 1.0f, // top right
-     1.0f, -1.0f, 0.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f, // bottom right
-    -1.0f, -1.0f, 0.0f,   0.0f, 0.0f, 1.0f,   0.0f, 0.0f, // bottom left
-    -1.0f,  1.0f, 0.0f,   1.0f, 1.0f, 0.0f,   0.0f, 1.0f  // top left 
+    // positions  // texture coords
+     1.0f,  1.0f, 1.0f, 1.0f, // top right
+     1.0f, -1.0f, 1.0f, 0.0f, // bottom right
+    -1.0f, -1.0f, 0.0f, 0.0f, // bottom left
+    -1.0f,  1.0f, 0.0f, 1.0f  // top left 
 };
 unsigned int indices[] = {
     0, 1, 3, // first triangle
@@ -276,8 +276,8 @@ static GLfloat	docked_light_specular[4]	= { DOCKED_ILLUM_LEVEL, DOCKED_ILLUM_LEV
 	// TODO: make this right with height and width, also consider updates to screen reolsution
 	// TODO: also do deletion of these objects
 	// window width and height
-	width = 1000;
-	height = 500;
+	width = 1920;
+	height = 1000;
 
 	// creating texture that should be rendered into
 	glGenTextures(1, &targetTextureID);
@@ -288,19 +288,6 @@ static GLfloat	docked_light_specular[4]	= { DOCKED_ILLUM_LEVEL, DOCKED_ILLUM_LEV
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-
-    // set image data
-	// const int size = 256;
-    // unsigned char data[3 * size * size * sizeof(unsigned char)];
-	// for (unsigned int i = 0; i < size  * size; i++) 
-	// {
-	// 	data[i * 3] = 255;
-	// 	data[i * 3 + 1] = 255;
-	// 	data[i * 3 + 2] = 255;
-	// 	//data[i * 3 + 4] = 255;
-	// }
-    // // set texture data and generate mipmaps
-    // glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, size, size, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
 
 	// create necessary render buffer
 	glGenRenderbuffers(1, &targetDepthBufferID);
@@ -341,14 +328,11 @@ static GLfloat	docked_light_specular[4]	= { DOCKED_ILLUM_LEVEL, DOCKED_ILLUM_LEV
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
     // position attribute
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
-    // color attribute
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
     // texture coord attribute
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
-    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
 }
 
 - (id) initWithGameView:(MyOpenGLView *)inGameView
@@ -4455,6 +4439,7 @@ static const OOMatrix	starboard_matrix =
 {
 	OOLog(@"universe.profile.draw", @"%@", @"Begin draw");
 	glBindFramebuffer(GL_FRAMEBUFFER, targetFramebufferID);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	if (!no_update)
 	{
 		@try
@@ -4867,8 +4852,6 @@ static const OOMatrix	starboard_matrix =
 
 	glBindFramebuffer(GL_FRAMEBUFFER, defaultDrawFBO);
 
-
-    glClearColor(0.2f, 1.0f, 0.3f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 	[textureProgram apply];
