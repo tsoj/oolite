@@ -24,6 +24,7 @@ MA 02110-1301, USA.
 
 
 #import "OOOpenGL.h"
+#import "OOShaderProgram.h"
 #import "Universe.h"
 #import "MyOpenGLView.h"
 #import "GameController.h"
@@ -120,6 +121,20 @@ static NSString * const kOOLogUniversePopulateError			= @"universe.populate.erro
 static NSString * const kOOLogUniversePopulateWitchspace	= @"universe.populate.witchspace";
 static NSString * const kOOLogEntityVerificationError		= @"entity.linkedList.verify.error";
 static NSString * const kOOLogEntityVerificationRebuild		= @"entity.linkedList.verify.rebuild";
+
+
+
+float vertices[] = {
+    // positions          // colors           // texture coords
+     1.0f,  1.0f, 0.0f,   1.0f, 0.0f, 0.0f,   1.0f, 1.0f, // top right
+     1.0f, -1.0f, 0.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f, // bottom right
+    -1.0f, -1.0f, 0.0f,   0.0f, 0.0f, 1.0f,   0.0f, 0.0f, // bottom left
+    -1.0f,  1.0f, 0.0f,   1.0f, 1.0f, 0.0f,   0.0f, 1.0f  // top left 
+};
+unsigned int indices[] = {
+    0, 1, 3, // first triangle
+    1, 2, 3  // second triangle
+};
 
 
 Universe *gSharedUniverse = nil;
@@ -251,6 +266,90 @@ static GLfloat	docked_light_specular[4]	= { DOCKED_ILLUM_LEVEL, DOCKED_ILLUM_LEV
 // How dark the default ambient level of 1.0 will be
 #define SKY_AMBIENT_ADJUSTMENT		0.0625
 
+//TODO move somewhere appropiate
+- (void) initTargetFramebufferWithWidth:(int)width andHeight:(int)height
+{
+	// have to do this because on my machine THE DEFAULT FRAMEBUFFER IS NOT ZERO?!?!?
+	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &defaultDrawFBO);
+
+	printf("height: %i, width: %i\n", width, height);
+	// TODO: make this right with height and width, also consider updates to screen reolsution
+	// TODO: also do deletion of these objects
+	// window width and height
+	width = 1000;
+	height = 500;
+
+	// creating texture that should be rendered into
+	glGenTextures(1, &targetTextureID);
+	glBindTexture(GL_TEXTURE_2D, targetTextureID);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    // set image data
+	// const int size = 256;
+    // unsigned char data[3 * size * size * sizeof(unsigned char)];
+	// for (unsigned int i = 0; i < size  * size; i++) 
+	// {
+	// 	data[i * 3] = 255;
+	// 	data[i * 3 + 1] = 255;
+	// 	data[i * 3 + 2] = 255;
+	// 	//data[i * 3 + 4] = 255;
+	// }
+    // // set texture data and generate mipmaps
+    // glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, size, size, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+
+	// create necessary render buffer
+	glGenRenderbuffers(1, &targetDepthBufferID);
+	glBindRenderbuffer(GL_RENDERBUFFER, targetDepthBufferID);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, width, height);
+
+	// create framebuffer and attach texture and depth buffer
+	glGenFramebuffers(1, &targetFramebufferID);
+	glBindFramebuffer(GL_FRAMEBUFFER, targetFramebufferID);
+	glDrawBuffer(GL_NONE);
+	glReadBuffer(GL_NONE);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, targetDepthBufferID);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, targetTextureID, 0);
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
+
+
+	// shader for drawing a textured quad
+	// TODO move somewhere else
+	// TODO think about memory management?
+		
+	NSDictionary *attributes = [NSDictionary dictionary];
+	
+	textureProgram = [[OOShaderProgram shaderProgramWithVertexShaderName:@"oolite-texture.vertex"
+											          fragmentShaderName:@"oolite-texture.fragment"
+														          prefix:@"#version 330\n"
+											           attributeBindings:attributes] retain];
+
+	glGenVertexArrays(1, &VAO);
+    glGenBuffers(1, &VBO);
+    glGenBuffers(1, &EBO);
+
+    glBindVertexArray(VAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+    // position attribute
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    // color attribute
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    // texture coord attribute
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+}
 
 - (id) initWithGameView:(MyOpenGLView *)inGameView
 {
@@ -266,6 +365,10 @@ static GLfloat	docked_light_specular[4]	= { DOCKED_ILLUM_LEVEL, DOCKED_ILLUM_LEV
 	if (self == nil)  return nil;
 	
 	_doingStartUp = YES;
+
+	[self initTargetFramebufferWithWidth:[gameView viewSize].width andHeight:[gameView viewSize].height];
+
+
 	OOInitReallyRandom([NSDate timeIntervalSinceReferenceDate] * 1e9);
 	
 	NSUserDefaults *prefs = [NSUserDefaults standardUserDefaults];
@@ -4351,6 +4454,7 @@ static const OOMatrix	starboard_matrix =
 - (void) drawUniverse
 {
 	OOLog(@"universe.profile.draw", @"%@", @"Begin draw");
+	glBindFramebuffer(GL_FRAMEBUFFER, targetFramebufferID);
 	if (!no_update)
 	{
 		@try
@@ -4757,6 +4861,64 @@ static const OOMatrix	starboard_matrix =
 		}
 	}
 	OOLog(@"universe.profile.draw", @"%@", @"End drawing");
+
+
+	OOGL(glFlush());
+
+	glBindFramebuffer(GL_FRAMEBUFFER, defaultDrawFBO);
+
+
+    glClearColor(0.2f, 1.0f, 0.3f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	[textureProgram apply];
+
+    glUniform1i(glGetUniformLocation([textureProgram program], "image"), 0);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, targetTextureID);
+
+    
+	glBindVertexArray(VAO);    
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+	NSMutableString *error_message = [NSMutableString stringWithString:@""];
+    GLenum error;
+    do
+    {
+        error = glGetError();
+        switch (error)
+        {
+            case GL_INVALID_ENUM:
+                [error_message appendString:@"GL_INVALID_ENUM\n"];
+                break;
+            case GL_INVALID_VALUE:
+                [error_message  appendString:@"GL_INVALID_VALUE\n"];
+                break;
+            case GL_INVALID_OPERATION:
+                [error_message  appendString:@"GL_INVALID_OPERATION\n"];
+                break;
+            case GL_INVALID_FRAMEBUFFER_OPERATION:
+                [error_message  appendString:@"GL_INVALID_FRAMEBUFFER_OPERATION\n"];
+                break;
+            case GL_OUT_OF_MEMORY:
+                [error_message  appendString:@"GL_OUT_OF_MEMORY\n"];
+                break;
+            case GL_STACK_UNDERFLOW:
+                [error_message  appendString:@"GL_STACK_UNDERFLOW\n"];
+                break;
+            case GL_STACK_OVERFLOW:
+                [error_message  appendString:@"GL_STACK_OVERFLOW\n"];
+                break;
+            case GL_NO_ERROR:
+                break;
+        }
+    } while (error != GL_NO_ERROR);
+    if ([error_message length] > 0)
+    {
+       printf("Error: %s\n", [error_message UTF8String]);
+    }
+	// printf("done\n");
+
 }
 
 

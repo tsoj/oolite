@@ -26,6 +26,7 @@ MA 02110-1301, USA.
 
 #import "OOCocoa.h"
 #import "OOOpenGL.h"
+#import "OOShaderProgram.h"
 #import "legacy_random.h"
 #import "OOMaths.h"
 #import "OOColor.h"
@@ -337,7 +338,16 @@ enum
 	BOOL					_witchspaceBreakPattern;
 	BOOL					_dockingClearanceProtocolActive;
 	BOOL					_doingStartUp;
+
+	GLuint					targetTextureID; // TODO: do proper exit handling
+	GLuint					targetDepthBufferID;
+	GLuint					targetFramebufferID;
+	OOShaderProgram			*textureProgram;
+	GLint 					defaultDrawFBO;
+	unsigned int VBO, VAO, EBO;
 }
+//TODO: move somewhere else
+- (void) initTargetFramebufferWithWidth:(int)width andHeight:(int)height;
 
 - (id)initWithGameView:(MyOpenGLView *)gameView;
 
