@@ -272,6 +272,23 @@ static GLfloat	docked_light_specular[4]	= { DOCKED_ILLUM_LEVEL, DOCKED_ILLUM_LEV
 	// have to do this because on my machine THE DEFAULT FRAMEBUFFER IS NOT ZERO?!?!?
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &defaultDrawFBO);
 
+	GLint previousProgramID;
+	glGetIntegerv(GL_CURRENT_PROGRAM, &previousProgramID);
+
+	GLint previousTextureID;
+	glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTextureID);
+
+	GLint previousVAO;
+	glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previousVAO);
+
+	GLint previousArrayBuffer;
+	glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previousArrayBuffer);
+
+	GLint previousElementBuffer;
+	glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &previousElementBuffer);
+
+
+
 	printf("height: %i, width: %i\n", width, height);
 	// TODO: make this right with height and width, also consider updates to screen reolsution
 	// TODO: also do deletion of these objects
@@ -289,19 +306,18 @@ static GLfloat	docked_light_specular[4]	= { DOCKED_ILLUM_LEVEL, DOCKED_ILLUM_LEV
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-	// create necessary render buffer
+	// create necessary depth render buffer
 	glGenRenderbuffers(1, &targetDepthBufferID);
 	glBindRenderbuffer(GL_RENDERBUFFER, targetDepthBufferID);
 	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, width, height);
 
-	// create framebuffer and attach texture and depth buffer
+	// create framebuffer and attach texture and depth buffer to framebuffer
 	glGenFramebuffers(1, &targetFramebufferID);
 	glBindFramebuffer(GL_FRAMEBUFFER, targetFramebufferID);
-	glDrawBuffer(GL_NONE);
-	glReadBuffer(GL_NONE);
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
+	glReadBuffer(GL_COLOR_ATTACHMENT0);
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, targetDepthBufferID);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, targetTextureID, 0);
-	glDrawBuffer(GL_COLOR_ATTACHMENT0);
 
 
 	// shader for drawing a textured quad
@@ -333,6 +349,13 @@ static GLfloat	docked_light_specular[4]	= { DOCKED_ILLUM_LEVEL, DOCKED_ILLUM_LEV
     // texture coord attribute
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
+
+	glUseProgram(previousProgramID);
+	glBindTexture(GL_TEXTURE_2D, previousTextureID);
+	glBindVertexArray(previousVAO);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, previousElementBuffer);
+	glBindBuffer(GL_ARRAY_BUFFER, previousArrayBuffer);
+
 }
 
 - (id) initWithGameView:(MyOpenGLView *)inGameView
@@ -4439,7 +4462,6 @@ static const OOMatrix	starboard_matrix =
 {
 	OOLog(@"universe.profile.draw", @"%@", @"Begin draw");
 	glBindFramebuffer(GL_FRAMEBUFFER, targetFramebufferID);
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	if (!no_update)
 	{
 		@try
@@ -4850,19 +4872,37 @@ static const OOMatrix	starboard_matrix =
 
 	OOGL(glFlush());
 
+	GLint previousProgramID;
+	glGetIntegerv(GL_CURRENT_PROGRAM, &previousProgramID);
+	GLint previousTextureID;
+	glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTextureID);
+	GLint previousVAO;
+	glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previousVAO);
+	GLint previousActiveTexture;
+	glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
+
+
+
 	glBindFramebuffer(GL_FRAMEBUFFER, defaultDrawFBO);
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-	[textureProgram apply];
+	glUseProgram([textureProgram program]);
 
     glUniform1i(glGetUniformLocation([textureProgram program], "image"), 0);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, targetTextureID);
-
     
 	glBindVertexArray(VAO);    
 	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+
+
+	glUseProgram(previousProgramID);
+	glActiveTexture(previousActiveTexture);
+	glBindTexture(GL_TEXTURE_2D, previousTextureID);
+	glBindVertexArray(previousVAO);
+	glBindFramebuffer(GL_FRAMEBUFFER, targetFramebufferID);
 
 	NSMutableString *error_message = [NSMutableString stringWithString:@""];
     GLenum error;
