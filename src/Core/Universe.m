@@ -299,8 +299,8 @@ static GLfloat	docked_light_specular[4]	= { DOCKED_ILLUM_LEVEL, DOCKED_ILLUM_LEV
 	// creating texture that should be rendered into
 	glGenTextures(1, &targetTextureID);
 	glBindTexture(GL_TEXTURE_2D, targetTextureID);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_HALF_FLOAT, NULL);
+	// TODO: check if there is a performance penalty when using GL_RGBA16F, instead of GL_RGBA8
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -321,9 +321,17 @@ static GLfloat	docked_light_specular[4]	= { DOCKED_ILLUM_LEVEL, DOCKED_ILLUM_LEV
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, targetTextureID, 0);
 
 
+	/* TODO: in OOEnvironmentCubeMap.m handle these calls bette with previosID:
+	  - OOGL(glBindTexture(GL_TEXTURE_CUBE_MAP, 0));
+	  - OOGL(glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0));
+	  - OOGL(glBindRenderbufferEXT(GL_RENDERBUFFER_EXT, 0));
+	*/
+
 	// shader for drawing a textured quad
 	// TODO move somewhere else
 	// TODO think about memory management?
+	// TODO use appropriate version
+	// TODO everywhere else, do OpenGL calls like everywhere else (OOGL(...)) and with EXT and ARB and stuff
 		
 	NSDictionary *attributes = [NSDictionary dictionary];
 	
@@ -4870,9 +4878,6 @@ static const OOMatrix	starboard_matrix =
 	}
 	OOLog(@"universe.profile.draw", @"%@", @"End drawing");
 
-
-	OOGL(glFlush());
-
 	GLint previousProgramID;
 	glGetIntegerv(GL_CURRENT_PROGRAM, &previousProgramID);
 	GLint previousTextureID;
@@ -4909,44 +4914,6 @@ static const OOMatrix	starboard_matrix =
 	glBindTexture(GL_TEXTURE_2D, previousTextureID);
 	glBindVertexArray(previousVAO);
 	glBindFramebuffer(GL_FRAMEBUFFER, targetFramebufferID);
-
-	NSMutableString *error_message = [NSMutableString stringWithString:@""];
-    GLenum error;
-    do
-    {
-        error = glGetError();
-        switch (error)
-        {
-            case GL_INVALID_ENUM:
-                [error_message appendString:@"GL_INVALID_ENUM\n"];
-                break;
-            case GL_INVALID_VALUE:
-                [error_message  appendString:@"GL_INVALID_VALUE\n"];
-                break;
-            case GL_INVALID_OPERATION:
-                [error_message  appendString:@"GL_INVALID_OPERATION\n"];
-                break;
-            case GL_INVALID_FRAMEBUFFER_OPERATION:
-                [error_message  appendString:@"GL_INVALID_FRAMEBUFFER_OPERATION\n"];
-                break;
-            case GL_OUT_OF_MEMORY:
-                [error_message  appendString:@"GL_OUT_OF_MEMORY\n"];
-                break;
-            case GL_STACK_UNDERFLOW:
-                [error_message  appendString:@"GL_STACK_UNDERFLOW\n"];
-                break;
-            case GL_STACK_OVERFLOW:
-                [error_message  appendString:@"GL_STACK_OVERFLOW\n"];
-                break;
-            case GL_NO_ERROR:
-                break;
-        }
-    } while (error != GL_NO_ERROR);
-    if ([error_message length] > 0)
-    {
-       printf("Error: %s\n", [error_message UTF8String]);
-    }
-	// printf("done\n");
 
 }
 
