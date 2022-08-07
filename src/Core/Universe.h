@@ -339,15 +339,14 @@ enum
 	BOOL					_dockingClearanceProtocolActive;
 	BOOL					_doingStartUp;
 
-	GLuint					targetTextureID; // TODO: do proper exit handling
+	GLuint					targetTextureID;
+	NSSize					targetFramebufferSize;
 	GLuint					targetDepthBufferID;
 	GLuint					targetFramebufferID;
 	OOShaderProgram			*textureProgram;
+	GLuint 					quadTextureVBO, quadTextureVAO, quadTextureEBO;
 	GLint 					defaultDrawFBO;
-	unsigned int VBO, VAO, EBO;
 }
-//TODO: move somewhere else
-- (void) initTargetFramebufferWithWidth:(int)width andHeight:(int)height;
 
 - (id)initWithGameView:(MyOpenGLView *)gameView;
 

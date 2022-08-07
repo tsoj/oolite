@@ -63,22 +63,22 @@ If you have the Debian package tools (installed by default with
 Debian and Ubuntu), use dpkg-buildpackage.
 
 On Linux, BSD and other Unix platforms without dpkg tools, you will need to
-get GNUstep and SDL development libraries in addition to what is usually
+get gcc-objc/gobjc (Objective-C frontend for GCC), GNUstep and SDL development libraries in addition to what is usually
 installed by default if you choose to install the development
 headers/libraries etc. when initially installing the OS. For most Linux
-distros, GNUstep and SDL development libraries come prepackaged - just
+distros, gcc-objc, GNUstep and SDL development libraries come prepackaged - just
 apt-get/yum install the relevant files. You may also need to install Mozilla
 Spidermonkey (libmozjs). On others you may need to build them from source. In
 particular, you need the SDL_Mixer library, which doesn't always come with the
 base SDL development kit.
 
+If you haven't done so yet, fetch the various submodules, see [Git](#Git).
+
 Then just type `make`, or, if you're using GNU make,
 `make -f Makefile release`. On some systems, such as Gentoo, you may need to run
 `make -f Makefile release OBJCFLAGS=-fobjc-exceptions`.  
-If you get errors like `make[1]: *** No rule to make target '/objc.make'.  Stop.` it might help if you run `source /usr/share/GNUstep/Makefiles/GNUstep.sh` (the exact path to `GNUstep.sh` might differ).  
+If you get errors like `make[1]: *** No rule to make target '/objc.make'.  Stop.` it might help if you run `source /usr/share/GNUstep/Makefiles/GNUstep.sh` (the exact path to `GNUstep.sh` might differ) first.  
 If you have problems with missing textures you can try to delete `deps/Linux-deps/include/png.h` and `deps/Linux-deps/include/pngconf.h` before compiling.
-
-Also remember to first fetch the various submodules, see [Git](#Git).
 
 ## Running
 On OS X, you can run from Xcode by clicking on the appropriate icon

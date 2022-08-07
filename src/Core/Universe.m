@@ -23,8 +23,6 @@ MA 02110-1301, USA.
 */
 
 
-#import "OOOpenGL.h"
-#import "OOShaderProgram.h"
 #import "Universe.h"
 #import "MyOpenGLView.h"
 #import "GameController.h"
@@ -92,6 +90,11 @@ MA 02110-1301, USA.
 #import "OOJSScript.h"
 #import "OOJSFrameCallbacks.h"
 #import "OOJSPopulatorDefinition.h"
+#import "OOOpenGL.h"
+#import "OOShaderProgram.h"
+
+#include <stdio.h>
+#include <time.h>
 
 
 #if OO_LOCALIZATION_TOOLS
@@ -124,16 +127,16 @@ static NSString * const kOOLogEntityVerificationRebuild		= @"entity.linkedList.v
 
 
 
-float vertices[] = {
-    // positions  // texture coords
-     1.0f,  1.0f, 1.0f, 1.0f, // top right
-     1.0f, -1.0f, 1.0f, 0.0f, // bottom right
-    -1.0f, -1.0f, 0.0f, 0.0f, // bottom left
-    -1.0f,  1.0f, 0.0f, 1.0f  // top left 
+const GLfloat framebufferQuadVertices[] = {
+	// positions  // texture coords
+	 1.0f,  1.0f, 1.0f, 1.0f, // top right
+	 1.0f, -1.0f, 1.0f, 0.0f, // bottom right
+	-1.0f, -1.0f, 0.0f, 0.0f, // bottom left
+	-1.0f,  1.0f, 0.0f, 1.0f  // top left 
 };
-unsigned int indices[] = {
-    0, 1, 3, // first triangle
-    1, 2, 3  // second triangle
+const GLuint framebufferQuadIndices[] = {
+	0, 1, 3, // first triangle
+	1, 2, 3  // second triangle
 };
 
 
@@ -197,6 +200,11 @@ static OOComparisonResult comparePrice(id dict1, id dict2, void * context);
 
 
 @interface Universe (OOPrivate)
+
+- (void) initTargetFramebufferWithViewSize:(NSSize)viewSize;
+- (void) deleteOpenGLObjects;
+- (void) reinitTargetFramebufferWithViewSize:(NSSize)viewSize;
+- (void) drawTargetTextureIntoDefaultFramebuffer;
 
 - (BOOL) doRemoveEntity:(Entity *)entity;
 - (void) setUpCargoPods;
@@ -266,41 +274,26 @@ static GLfloat	docked_light_specular[4]	= { DOCKED_ILLUM_LEVEL, DOCKED_ILLUM_LEV
 // How dark the default ambient level of 1.0 will be
 #define SKY_AMBIENT_ADJUSTMENT		0.0625
 
-//TODO move somewhere appropiate
-- (void) initTargetFramebufferWithWidth:(int)width andHeight:(int)height
+- (void) initTargetFramebufferWithViewSize:(NSSize)viewSize
 {
-	// have to do this because on my machine THE DEFAULT FRAMEBUFFER IS NOT ZERO?!?!?
+	// have to do this because on my machine the default framebuffer is not zero
 	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &defaultDrawFBO);
 
 	GLint previousProgramID;
 	glGetIntegerv(GL_CURRENT_PROGRAM, &previousProgramID);
-
 	GLint previousTextureID;
 	glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTextureID);
-
 	GLint previousVAO;
 	glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previousVAO);
-
 	GLint previousArrayBuffer;
 	glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &previousArrayBuffer);
-
 	GLint previousElementBuffer;
 	glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &previousElementBuffer);
-
-
-
-	printf("height: %i, width: %i\n", width, height);
-	// TODO: make this right with height and width, also consider updates to screen reolsution
-	// TODO: also do deletion of these objects
-	// window width and height
-	width = 1920;
-	height = 1000;
 
 	// creating texture that should be rendered into
 	glGenTextures(1, &targetTextureID);
 	glBindTexture(GL_TEXTURE_2D, targetTextureID);
-	// TODO: check if there is a performance penalty when using GL_RGBA16F, instead of GL_RGBA8
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, viewSize.width, viewSize.height, 0, GL_RGBA, GL_FLOAT, NULL);
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -310,7 +303,7 @@ static GLfloat	docked_light_specular[4]	= { DOCKED_ILLUM_LEVEL, DOCKED_ILLUM_LEV
 	// create necessary depth render buffer
 	glGenRenderbuffers(1, &targetDepthBufferID);
 	glBindRenderbuffer(GL_RENDERBUFFER, targetDepthBufferID);
-	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, width, height);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, viewSize.width, viewSize.height);
 
 	// create framebuffer and attach texture and depth buffer to framebuffer
 	glGenFramebuffers(1, &targetFramebufferID);
@@ -319,52 +312,123 @@ static GLfloat	docked_light_specular[4]	= { DOCKED_ILLUM_LEVEL, DOCKED_ILLUM_LEV
 	glReadBuffer(GL_COLOR_ATTACHMENT0);
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, targetDepthBufferID);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, targetTextureID, 0);
+	targetFramebufferSize = viewSize;
 
 
-	/* TODO: in OOEnvironmentCubeMap.m handle these calls bette with previosID:
+	/* TODO: in OOEnvironmentCubeMap.m call these bind functions not with 0 but with "previousXxxID"s:
 	  - OOGL(glBindTexture(GL_TEXTURE_CUBE_MAP, 0));
 	  - OOGL(glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0));
 	  - OOGL(glBindRenderbufferEXT(GL_RENDERBUFFER_EXT, 0));
 	*/
-
-	// shader for drawing a textured quad
-	// TODO move somewhere else
-	// TODO think about memory management?
-	// TODO use appropriate version
-	// TODO everywhere else, do OpenGL calls like everywhere else (OOGL(...)) and with EXT and ARB and stuff
-		
-	NSDictionary *attributes = [NSDictionary dictionary];
 	
+	// TODO do OpenGL calls like everywhere else (OOGL(...)) and with EXT and ARB and stuff
+		
+	// TODO: does passing [NSDictionary dictionary] without releasing it here cause a memory leak?:
+	// shader for drawing a textured quad
 	textureProgram = [[OOShaderProgram shaderProgramWithVertexShaderName:@"oolite-texture.vertex"
-											          fragmentShaderName:@"oolite-texture.fragment"
-														          prefix:@"#version 330\n"
-											           attributeBindings:attributes] retain];
+													  fragmentShaderName:@"oolite-texture.fragment"
+																  prefix:@"#version 330\n"// TODO use correct version
+													   attributeBindings:[NSDictionary dictionary]] retain];
 
-	glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
-    glGenBuffers(1, &EBO);
+	glGenVertexArrays(1, &quadTextureVAO);
+	glGenBuffers(1, &quadTextureVBO);
+	glGenBuffers(1, &quadTextureEBO);
 
-    glBindVertexArray(VAO);
+	glBindVertexArray(quadTextureVAO);
 
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+	glBindBuffer(GL_ARRAY_BUFFER, quadTextureVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(framebufferQuadVertices), framebufferQuadVertices, GL_STATIC_DRAW);
 
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, quadTextureEBO);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(framebufferQuadIndices), framebufferQuadIndices, GL_STATIC_DRAW);
 
-    // position attribute
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-    // texture coord attribute
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
-    glEnableVertexAttribArray(1);
+	// position attribute
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(0);
+	// texture coord attribute
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+	glEnableVertexAttribArray(1);
 
+
+	// restoring previous bindings
 	glUseProgram(previousProgramID);
+	glBindFramebuffer(GL_FRAMEBUFFER, defaultDrawFBO);
 	glBindTexture(GL_TEXTURE_2D, previousTextureID);
 	glBindVertexArray(previousVAO);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, previousElementBuffer);
 	glBindBuffer(GL_ARRAY_BUFFER, previousArrayBuffer);
 
+}
+
+
+- (void) deleteOpenGLObjects
+{
+	glDeleteTextures(1, &targetTextureID);
+	glDeleteRenderbuffers(1, &targetDepthBufferID);
+	glDeleteFramebuffers(1, &targetFramebufferID);
+	glDeleteVertexArrays(1, &quadTextureVAO);
+	glDeleteBuffers(1, &quadTextureVBO);
+	glDeleteBuffers(1, &quadTextureEBO);
+	[textureProgram release];
+}
+
+
+- (void) reinitTargetFramebufferWithViewSize:(NSSize)viewSize
+{
+	[self deleteOpenGLObjects];
+	[self initTargetFramebufferWithViewSize:viewSize];
+}
+
+
+- (void) drawTargetTextureIntoDefaultFramebuffer
+{
+	// TODO remove timer
+	glFinish();
+	clock_t t;
+	t = clock();
+
+
+	GLint previousFBO;
+	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousFBO);
+	GLint previousProgramID;
+	glGetIntegerv(GL_CURRENT_PROGRAM, &previousProgramID);
+	GLint previousTextureID;
+	glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTextureID);
+	GLint previousVAO;
+	glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previousVAO);
+	GLint previousActiveTexture;
+	glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
+
+
+	glBindFramebuffer(GL_FRAMEBUFFER, defaultDrawFBO);
+
+	// fixes transparency issue for some reason
+	glDisable(GL_BLEND);
+
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	glUseProgram([textureProgram program]);
+
+	glUniform1i(glGetUniformLocation([textureProgram program], "image"), 0);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, targetTextureID);
+	
+	glBindVertexArray(quadTextureVAO);
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+	// restore previous bindings
+	glBindFramebuffer(GL_FRAMEBUFFER, previousFBO);
+	glEnable(GL_BLEND);
+	glUseProgram(previousProgramID);
+	glActiveTexture(previousActiveTexture);
+	glBindTexture(GL_TEXTURE_2D, previousTextureID);
+	glBindVertexArray(previousVAO);
+
+	glFinish();
+	t = clock() - t;
+	double time_taken = ((double)t)/CLOCKS_PER_SEC; // calculate the elapsed time
+   	printf("The program took %f seconds to execute\n", time_taken);
 }
 
 - (id) initWithGameView:(MyOpenGLView *)inGameView
@@ -382,9 +446,6 @@ static GLfloat	docked_light_specular[4]	= { DOCKED_ILLUM_LEVEL, DOCKED_ILLUM_LEV
 	
 	_doingStartUp = YES;
 
-	[self initTargetFramebufferWithWidth:[gameView viewSize].width andHeight:[gameView viewSize].height];
-
-
 	OOInitReallyRandom([NSDate timeIntervalSinceReferenceDate] * 1e9);
 	
 	NSUserDefaults *prefs = [NSUserDefaults standardUserDefaults];
@@ -395,6 +456,8 @@ static GLfloat	docked_light_specular[4]	= { DOCKED_ILLUM_LEVEL, DOCKED_ILLUM_LEV
 	
 	[self setGameView:inGameView];
 	gSharedUniverse = self;
+	
+	[self initTargetFramebufferWithViewSize:[gameView viewSize]];
 	
 	allPlanets = [[NSMutableArray alloc] init];
 	allStations = [[NSMutableSet alloc] init];
@@ -588,6 +651,8 @@ static GLfloat	docked_light_specular[4]	= { DOCKED_ILLUM_LEVEL, DOCKED_ILLUM_LEV
 #endif
 #endif
 	[conditionScripts release];
+
+	[self deleteOpenGLObjects];
 	
 	[super dealloc];
 }
@@ -4470,6 +4535,12 @@ static const OOMatrix	starboard_matrix =
 - (void) drawUniverse
 {
 	OOLog(@"universe.profile.draw", @"%@", @"Begin draw");
+
+	if ((int)targetFramebufferSize.width != (int)[gameView viewSize].width || (int)targetFramebufferSize.height != (int)[gameView viewSize].height)
+	{
+		[self reinitTargetFramebufferWithViewSize:[gameView viewSize]];
+	}
+
 	glBindFramebuffer(GL_FRAMEBUFFER, targetFramebufferID);
 	if (!no_update)
 	{
@@ -4876,45 +4947,13 @@ static const OOMatrix	starboard_matrix =
 			}
 		}
 	}
+	glBindFramebuffer(GL_FRAMEBUFFER, defaultDrawFBO);
 	OOLog(@"universe.profile.draw", @"%@", @"End drawing");
 
-	GLint previousProgramID;
-	glGetIntegerv(GL_CURRENT_PROGRAM, &previousProgramID);
-	GLint previousTextureID;
-	glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTextureID);
-	GLint previousVAO;
-	glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previousVAO);
-	GLint previousActiveTexture;
-	glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
 
-
-
-	glBindFramebuffer(GL_FRAMEBUFFER, defaultDrawFBO);
-
-	// fixes transparency issue for some reason
-	// got it here: https://forum.openframeworks.cc/t/weird-problem-rendering-semi-transparent-image-to-fbo/2215/17 
-	glEnable(GL_BLEND);
-	glBlendFuncSeparate(GL_ONE, GL_ZERO, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
-
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	glUseProgram([textureProgram program]);
-
-    glUniform1i(glGetUniformLocation([textureProgram program], "image"), 0);
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, targetTextureID);
-    
-	glBindVertexArray(VAO);    
-	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-
-
-
-	glUseProgram(previousProgramID);
-	glActiveTexture(previousActiveTexture);
-	glBindTexture(GL_TEXTURE_2D, previousTextureID);
-	glBindVertexArray(previousVAO);
-	glBindFramebuffer(GL_FRAMEBUFFER, targetFramebufferID);
-
+	OOLog(@"universe.profile.secondPassDraw", @"%@", @"Begin second pass draw");
+	[self drawTargetTextureIntoDefaultFramebuffer];
+	OOLog(@"universe.profile.secondPassDraw", @"%@", @"End second pass drawing");
 }
 
 
@@ -10052,9 +10091,9 @@ static OOComparisonResult comparePrice(id dict1, id dict2, void *context)
 	//[ResourceManager loadScripts]; // initialised inside [player setUp]!
 	
 	// NOTE: Anything in the sharedCache is now trashed and must be
-	//       reloaded. Ideally anything using the sharedCache should
-	//       be aware of cache flushes so it can automatically
-	//       reinitialize itself - mwerle 20081107.
+	//	   reloaded. Ideally anything using the sharedCache should
+	//	   be aware of cache flushes so it can automatically
+	//	   reinitialize itself - mwerle 20081107.
 	[OOShipRegistry reload];
 	[[self gameController] setGamePaused:NO];
 	[[self gameController] setMouseInteractionModeForUIWithMouseInteraction:NO];
